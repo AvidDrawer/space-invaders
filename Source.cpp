@@ -1,4 +1,13 @@
 // Version 5: Code clean-up to support multiple levels and ease feature addition
+// To do: 
+// !! Get all the definitions in one place, ensure sensible naming and finally, more comments please! 
+//				~ more or less done
+// 1. Add another level once 1st is completed.
+//				~ level 2 available. Add more levels and a text to display game completed
+// 2. Add text to display score. 
+// 3. Add screen-saver post level completion
+// 4. Add funky trajectory spaceship fall
+// 5. Make speed changes to enemy missile fire, frequency and reduce overall fire rate of player
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -10,7 +19,7 @@
 #include <iostream>
 #include <vector>
 #include <list>
-
+#include <fstream>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -27,10 +36,15 @@ private:
 public:
 	space_ship()
 	{
-		ssx = 0.4f;
+		init();
+	}
+	void init()
+	{
+		ssx = 0.2f;
 		ssy = -0.8f;
 		num_missile = 0;
 		missile_start = 0;
+		std::list<float>().swap(missile);
 	}
 	void change_ssx(float move)
 	{
@@ -100,23 +114,52 @@ public:
 	}
 };
 
-class enemy_missile
+class vao_ebo_draw
 {
 private:
-	std::vector<float> missile_loc;
+	unsigned int vao, vbo, ebo;
+	int num_vertices, num_attr;
+	std::vector<float> vbo_data;
+	std::vector<int> ebo_data, attr_size, attr_num_cumsum;
 public:
-	enemy_missile()
+	vao_ebo_draw(std::vector<int> external_ebo_data, std::vector<float> external_vbo_data, int n_attr, std::vector<int> sizes)
 	{
+		glGenBuffers(1, &vbo);
+		glGenBuffers(1, &ebo);
+		glGenVertexArrays(1, &vao);
+		
+		int cumsum = 0;
+		num_vertices = external_ebo_data.size();
+		num_attr = n_attr;
 
+		vbo_data = external_vbo_data;
+		ebo_data = external_ebo_data;
+		
+		for (int i = 0; i < num_attr; ++i)
+		{
+			attr_num_cumsum.push_back(cumsum);
+			cumsum += sizes[i];
+			attr_size.push_back(sizes[i]);	
+		}
+		attr_num_cumsum.push_back(cumsum);
 	}
-	int shoot_missile()
+	void setup()
 	{
-		return rand() % 10;
+		glBindVertexArray(vao);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, vbo_data.size()*sizeof(GL_FLOAT), &vbo_data[0], GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, ebo_data.size()*sizeof(GL_INT), &ebo_data[0], GL_DYNAMIC_DRAW);
+		for (int i = 0; i < num_attr; ++i)
+		{
+			glVertexAttribPointer(i, attr_size[i], GL_FLOAT, GL_FALSE, attr_num_cumsum[num_attr] * sizeof(GL_FLOAT), (void*)(attr_num_cumsum[i] * sizeof(GL_FLOAT)));
+			glEnableVertexAttribArray(i);
+		}
 	}
-	void add_missile(float x, float y)
+	void draw()
 	{
-		missile_loc.push_back(x);
-		missile_loc.push_back(y);
+		glBindVertexArray(vao);
+		glDrawElements(GL_TRIANGLES, num_vertices, GL_UNSIGNED_INT, 0);
 	}
 };
 
@@ -143,7 +186,7 @@ int main()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 4);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	GLFWwindow* window = glfwCreateWindow(800, 600, "Space Invaders", NULL, NULL);
+	GLFWwindow* window = glfwCreateWindow(600, 450, "Space Invaders", NULL, NULL);
 	if (window == NULL)
 	{
 		std::cout << "Failed to create GLFW window" << std::endl;
@@ -157,119 +200,84 @@ int main()
 		return -1;
 	}
 
+	// Shaders
 	char vertexshaderpath[] = "D:\\C++\\OpenGL\\Tutorial\\Visual Studio\\space_invaders\\si.vs";
 	char fragmentshaderpath[] = "D:\\C++\\OpenGL\\Tutorial\\Visual Studio\\space_invaders\\si.fs";
 	char vertexshaderpath_en[] = "D:\\C++\\OpenGL\\Tutorial\\Visual Studio\\space_invaders\\si_en_v2.vs";
 	char fragmentshaderpath_en[] = "D:\\C++\\OpenGL\\Tutorial\\Visual Studio\\space_invaders\\si_en_v2.fs";
 
-	Shader sh(vertexshaderpath, fragmentshaderpath);
-	Shader shen(vertexshaderpath_en, fragmentshaderpath_en);
-	// enemy ship locations
-	float villan[] = { 
-		-0.5f,0.8f,0.0f,
--0.4f,0.8f,0.0f,
--0.3f,0.8f,0.0f,
--0.2f,0.8f,0.0f,
--0.1f,0.8f,0.0f,
-0.0f,0.8f,0.0f,
-0.1f,0.8f,0.0f,
-0.2f,0.8f,0.0f,
-0.3f,0.8f,0.0f,
-0.4f,0.8f,0.0f,
-0.5f,0.8f,0.0f,
--0.5f,0.7f,0.0f,
--0.4f,0.7f,0.0f,
--0.3f,0.7f,0.0f,
--0.2f,0.7f,0.0f,
--0.1f,0.7f,0.0f,
-0.0f,0.7f,0.0f,
-0.1f,0.7f,0.0f,
-0.2f,0.7f,0.0f,
-0.3f,0.7f,0.0f,
-0.4f,0.7f,0.0f,
-0.5f,0.7f,0.0f,
--0.5f,0.6f,0.0f,
--0.4f,0.6f,0.0f,
--0.3f,0.6f,0.0f,
--0.2f,0.6f,0.0f,
--0.1f,0.6f,0.0f,
-0.0f,0.6f,0.0f,
-0.1f,0.6f,0.0f,
-0.2f,0.6f,0.0f,
-0.3f,0.6f,0.0f,
-0.4f,0.6f,0.0f,
-0.5f,0.6f,0.0f,
--0.5f,0.5f,0.0f,
--0.4f,0.5f,0.0f,
--0.3f,0.5f,0.0f,
--0.2f,0.5f,0.0f,
--0.1f,0.5f,0.0f,
-0.0f,0.5f,0.0f,
-0.1f,0.5f,0.0f,
-0.2f,0.5f,0.0f,
-0.3f,0.5f,0.0f,
-0.4f,0.5f,0.0f,
-0.5f,0.5f,0.0f
-	};
+	Shader sh_missiles(vertexshaderpath, fragmentshaderpath);
+	Shader sh_ships(vertexshaderpath_en, fragmentshaderpath_en);
+	
+	// enemy ship locations - File read 
+	char level_file[] = "D:\\C++\\OpenGL\\Tutorial\\Visual Studio\\space_invaders\\level_1.txt";
+	int n_rows = 0, n_per_row = 0, total_num = 0;
+	float coord_extract;
+	std::vector<float> villan;
+	std::ifstream lvl_reader;
+	lvl_reader.open(level_file, std::ios::in);
+	if (lvl_reader.is_open())
+	{
+		lvl_reader >> n_rows >> n_per_row;
+		total_num = n_rows * n_per_row;
+		while (true)
+		{
+			lvl_reader >> coord_extract;
+			villan.push_back(coord_extract);
+			if (lvl_reader.eof())
+				break;
+		}
+		lvl_reader.close();
+	}
 
+	// Standard box container to hold images
 	//        x      y   tex-x   tex-y    
-	float rect[] = {
+	const float rect[] = {
 			-0.2f, -0.2f, 0.0f, 0.0f,
 			 0.2f, -0.2f, 1.0f, 0.0f,
 			 0.2f,  0.2f, 1.0f, 1.0f,
 			-0.2f,  0.2f, 0.0f, 1.0f
 	};
+	float rect_length = abs(rect[0] - rect[4]);
+	float rect_width  = abs(rect[1] + rect[5]);
+	float scale_factor_ss = 0.25f, scale_factor_en = 0.15f;
+	float threshold = 0.005f;
+	const float left_end_limit = -0.8f, right_end_limit = 0.8f, top_end_limit = 0.8f, bot_end_limit = -0.8f;
 
-	unsigned int ind[] = {
+	int ind[] = {
 		0,1,2,
 		0,2,3
 	};
 
+	int sizes[] = { 2,2 };
+	std::vector<int> sin(sizes,sizes+2);
+	std::vector<float> f(rect, rect + 16);
+	std::vector<int> in(ind, ind + 6);
+
+	vao_ebo_draw space_ships(in, f, 2, sin);
+	space_ships.setup();
+
+	// VAO-VBO-EBO to initialize drawing
 	space_ship s;
 	float ss[] = {s.output_ssx(), s.output_ssy()};
-	unsigned int vao, vbo, ebo, vbo_m, vao_m, vao_en, vbo_en, ebo_en;
-	glGenVertexArrays(1, &vao);
+	unsigned int vbo_m, vao_m;
 	glGenVertexArrays(1, &vao_m);
-	glGenVertexArrays(1, &vao_en);
-	glGenBuffers(1, &vbo);
 	glGenBuffers(1, &vbo_m);
-	glGenBuffers(1, &ebo);
-	glGenBuffers(1, &vbo_en);
-	glGenBuffers(1, &ebo_en);
-
-	glBindVertexArray(vao);
-	glBindBuffer(GL_ARRAY_BUFFER, vbo);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(rect), rect, GL_STATIC_DRAW);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(ind), ind, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GL_FLOAT), (void*)0);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GL_FLOAT), (void*)(2 * sizeof(GL_FLOAT)));
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-
-	glBindVertexArray(vao_en);
-	glBindBuffer(GL_ARRAY_BUFFER, vbo_en);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(rect), rect, GL_STATIC_DRAW);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_en);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(ind), ind, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GL_FLOAT), (void*)0);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GL_FLOAT), (void*)(2 * sizeof(GL_FLOAT)));
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-
-	char imagepath[] = "C:\\Users\\sparks\\Pictures\\Saved Pictures\\spaceship10_si.png";	
+	
+	// Textures to show player ship and enemy ships
+	char imagepath[] = "C:\\Users\\sparks\\Pictures\\Saved Pictures\\spaceship6_si.png";	
 	unsigned int tex, tex2;
 	glGenTextures(1, &tex);
 	glBindTexture(GL_TEXTURE_2D, tex);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	// set texture wrapping to GL_REPEAT (default wrapping method)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	// set texture filtering parameters
+	
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	// load image, create texture and generate mipmaps
+	
 	int width, height, nrChannels;
 	GLenum format;
-	//stbi_set_flip_vertically_on_load(true); // tell stb_image.h to flip loaded texture's on the y-axis.
+	//stbi_set_flip_vertically_on_load(true); 
 	unsigned char* data = stbi_load(imagepath, &width, &height, &nrChannels, 0);
 	if (data)
 	{
@@ -291,14 +299,12 @@ int main()
 	char imagepath2[] = "C:\\Users\\sparks\\Pictures\\Saved Pictures\\spaceship7_si.png";
 	glGenTextures(1, &tex2);
 	glBindTexture(GL_TEXTURE_2D, tex2);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	// set texture wrapping to GL_REPEAT (default wrapping method)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	// set texture filtering parameters
+	
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	// load image, create texture and generate mipmaps
-	//int width, height, nrChannels;
-	stbi_set_flip_vertically_on_load(true); // tell stb_image.h to flip loaded texture's on the y-axis.
+	stbi_set_flip_vertically_on_load(true); 
 	data = stbi_load(imagepath2, &width, &height, &nrChannels, 0);
 	if (data)
 	{
@@ -321,66 +327,75 @@ int main()
 
 	int press, size, vill_dir = 1, num_kill = 0; float vel = 0.5f, vill_vel = 0.2f, disp;
 	float currFrame, lastFrame = 0.0f, deltaTime = 0.0f, lapse = 0.0f;
-	std::vector<float> temp;
+	
+	std::vector<float> player_fire, enemy_fire;
+	std::list<int> exist_enemy;
 
-	glm::vec3 test;
+	glm::vec3 offset_vect;
 	glm::mat4 model(1.0f);
 	
-	std::vector<bool> draw(44, 1);
-	std::vector<float> enemy_fire;
-
-	std::list<int> exist_enemy;
-	for (int i = 0; i < 11; ++i)
+	std::vector<bool> draw(total_num, 1);
+	for (int i = 0; i < n_per_row; ++i)
 		exist_enemy.push_back(i);
-	std::list<int>::iterator ee_it = exist_enemy.begin();
 	int num_enemy_missile = 0;
+
 	float return_fire_delta_time = 2.0f, last_return_fire_time = 1.0f;
+	float ss_missile_reload_time = 0.2f;
+	int vect_index = 3 * total_num - 3, vect_index2 = 0, vect_index3 = 0;
+	float en_row_length_norm = abs(villan[0] - villan[vect_index]);
+	float fps = 0;
 	while (!glfwWindowShouldClose(window))
 	{
 		currFrame = glfwGetTime();
 		deltaTime = currFrame - lastFrame;
 		lastFrame = currFrame;
-
+		++fps;
 		//deltaTime = 0.001;
 		disp = vel * deltaTime;
 		
+		if (currFrame - int(currFrame) <= 0.001f)
+		{
+			std::cout << "Number of frame per sec: "<<fps << " Frame draw time [s]: " << 1000 / fps << "\n"; 
+			fps = 0;
+		}
+
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
 
-		if (num_kill != 44)
+		if (num_kill != total_num)
 		{
 			press = processInput(window);
+
+			// Movement and firing of player ship based on input
 			if (press == 4)
 			{
-				if (ss[0] > -0.8f)
+				if (ss[0] > left_end_limit)
 				{
 					s.change_ssx(-disp);
 					ss[0] = s.output_ssx();
 				}
-				//std::cout << ss[0] << " " << ss[1] << std::endl;
 			}
 			else if (press == 6)
 			{
-				if (ss[0] < 0.8f)
+				if (ss[0] < right_end_limit)
 				{
 					s.change_ssx(disp);
 					ss[0] = s.output_ssx();
 				}
-				//std::cout << ss[0] << " " << ss[1] << std::endl;
 			}
-			else if (lapse + 0.2 < currFrame && press == 1)
+			else if (lapse + ss_missile_reload_time < currFrame && press == 1)
 			{
 				s.launch_missile();
 				lapse = currFrame;
 			}
 			else if (press == 5)
 			{
-				if (lapse + 0.2 < currFrame)
+				if (lapse + ss_missile_reload_time < currFrame)
 				{
 					s.launch_missile();
 					lapse = currFrame;
 				}
-				if (ss[0] > -0.8f)
+				if (ss[0] > left_end_limit)
 				{
 					s.change_ssx(-disp);
 					ss[0] = s.output_ssx();
@@ -388,12 +403,12 @@ int main()
 			}
 			else if (press == 7)
 			{
-				if (lapse + 0.2 < currFrame)
+				if (lapse + ss_missile_reload_time < currFrame)
 				{
 					s.launch_missile();
 					lapse = currFrame;
 				}
-				if (ss[0] < 0.8f)
+				if (ss[0] < right_end_limit)
 				{
 					s.change_ssx(disp);
 					ss[0] = s.output_ssx();
@@ -401,113 +416,85 @@ int main()
 			}
 			s.move_missiles(disp);
 
-			shen.use();
-			glBindVertexArray(vao);
-			glActiveTexture(GL_TEXTURE1);
+			// Draw player ship
+			sh_ships.use();
+			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, tex2);
-			test = glm::vec3(ss[0], ss[1], 0);
+			offset_vect = glm::vec3(ss[0], ss[1], 0);
 			glm::mat4 model(1.0f);
-			model = glm::translate(model, test);
-			model = glm::scale(model, glm::vec3(0.25f, 0.25f, 1.0f));
-			shen.setMat4("model", model);
-			//shen.setFloat("col", villan[i * 4 + 3]);
-			shen.setInt("texture1", 1);
-			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+			model = glm::translate(model, offset_vect);
+			model = glm::scale(model, glm::vec3(scale_factor_ss, scale_factor_ss, 1.0f));
+			sh_ships.setMat4("model", model);
+			sh_ships.setInt("texture1", 0);
+			space_ships.draw();
 
-			if (villan[0] >= -0.2)
+			// Horizontal movement of enemy ships 
+			if (villan[0] >= right_end_limit-en_row_length_norm)
 				vill_dir = -1;
-			else if (villan[0] <= -0.8)
+			else if (villan[0] <= left_end_limit)
 				vill_dir = +1;
-			for (int i = 0; i < 44; ++i)
-				villan[3 * i] += vill_dir * vill_vel * deltaTime;
+			for (int ind = 0; ind < n_rows * n_per_row * 3; ind += 3) 
+				villan[ind] += vill_dir * vill_vel * deltaTime;
 
-			temp = s.missile_return();
+			player_fire = s.missile_return();
 
+			// Player fire interaction with enemy ship
 			std::vector<float>::iterator it; int run = 0;
-			for (it = temp.begin(); it < temp.end(); ++it, ++run)
+			for (it = player_fire.begin(); it < player_fire.end(); ++it, ++run)
 			{
 				// find row first. next find column and then remove both
-				// limiting the vertical chk to minimize #chks
-				// providing a cushion for the horizontal chk of 0.01
+				// providing a cushion of 0.05 for the chk 
 				++it;
-				if (villan[1] - 0.02 < *it && villan[1] - 0.01 > * it)
-				{
-					--it;
-					for (int i = 0; i < 11; ++i)
-					{
-						if (villan[3 * i] - 0.03 < *it && villan[3 * i] + 0.03 > * it)
-						{
-							if (draw[i])
-							{
-								//villan[4 * i + 3] = 0;
-								draw[i] = 0;
-								s.remove_missile(run);
-								++num_kill;
-								break;
-							}
-						}
-					}
-					++it;
-				}
-				else if (villan[34] - 0.02 < *it && villan[34] - 0.01 > * it)
-				{
-					--it;
-					for (int i = 0; i < 11; ++i)
-					{
-						if (villan[33 + 3 * i] - 0.03 < *it && villan[33 + 3 * i] + 0.03 > * it)
-						{
-							if (draw[11 + i])
-							{
-								//villan[34 + 3 * i + 2] = 0;
-								draw[11 + i] = 0;
-								s.remove_missile(run);
-								++num_kill;
-								break;
-							}
-						}
-					}
-					++it;
-				}
-				else if (villan[67] - 0.02 < *it && villan[67] - 0.01 > * it)
-				{
-					--it;
-					for (int i = 0; i < 11; ++i)
-					{
-						if (villan[66 + 3 * i] - 0.03 < *it && villan[66 + 3 * i] + 0.03 > * it)
-						{
-							if (draw[22 + i])
-							{
-								//villan[67 + 3 * i + 2] = 0;
-								draw[22 + i] = 0;
-								s.remove_missile(run);
-								++num_kill;
-								break;
-							}
-						}
-					}
-					++it;
-				}
-				else if (villan[100]-0.02< *it && villan[100] - 0.01 > * it)
-				{
-					--it;
-					for (int i = 0; i < 11; ++i)
-					{
-						if (villan[99 + 3 * i] - 0.03 < *it && villan[99 + 3 * i] + 0.03 > * it)
-						{
-							if (draw[33 + i])
-							{
-								//villan[100 + 3 * i + 2] = 0;
-								draw[33 + i] = 0;
-								exist_enemy.remove(i);
-								s.remove_missile(run);
-								++num_kill;
-								break;
-							}
-						}
-					}
-					++it;
-				}
+
+				// Compiling the row crossing conditions-
+				// Note: Villan contains the enemy ship coordinates in 3D! x-y-z <assuming 11 ships per row as example>
+				//villan[1] - threshold_vert < *it && villan[1] + threshold_vert > * it
+				//villan[34] - threshold_vert < *it && villan[34] + threshold_vert > * it
+				//villan[67] - threshold_vert < *it && villan[67] + threshold_vert > * it
+				//villan[100] - threshold_vert< *it && villan[100] + threshold_vert > * it
+				// ...
+
+				//Column conditions
+				//villan[3 * i] - threshold_hor < *it && villan[3 * i] + threshold_hor > * it
+				//villan[33 + 3 * i] - threshold_hor < *it && villan[33 + 3 * i] + threshold_hor > * it
+				//villan[66 + 3 * i] - threshold_hor < *it && villan[66 + 3 * i] + threshold_hor > * it
+				//villan[99 + 3 * i] - threshold_hor < *it && villan[99 + 3 * i] + threshold_hor > * it
+				// ...
 				
+				std::vector<bool> row_conditions;
+				bool temp_var;
+				for (int i = 0; i < n_rows; ++i)
+				{
+					vect_index = 3 * n_per_row * i + 1;
+					temp_var = villan[vect_index] - (rect_width * scale_factor_en / 2) - threshold < *it && villan[vect_index] + (rect_width * scale_factor_en / 2) + threshold > * it;
+					row_conditions.push_back(temp_var);
+				}
+
+				for (int k = 0; k < n_rows; ++k)
+				{
+					if (row_conditions[k])
+					{
+						--it;
+						for (int i = 0; i < n_per_row; ++i)
+						{
+							vect_index = 3 * n_per_row * k + 3 * i;
+							vect_index2 = n_per_row * k + i;
+							if (villan[vect_index] - (rect_length * scale_factor_en / 2) - threshold < *it && villan[vect_index] + (rect_length * scale_factor_en / 2) + threshold >* it)
+							{
+								if (draw[vect_index2])
+								{
+									draw[vect_index2] = 0;
+									s.remove_missile(run);
+									exist_enemy.remove(i);
+									++num_kill;
+									break;
+								}
+							}
+						}
+						++it;
+						break;
+					}
+				}
 			}
 
 			s.remove_missile();
@@ -515,10 +502,10 @@ int main()
 			// Draw player fired missiles
 			if (size >= 1)
 			{
-				sh.use();
+				sh_missiles.use();
 				glBindVertexArray(vao_m);
 				glBindBuffer(GL_ARRAY_BUFFER, vbo_m);
-				glBufferData(GL_ARRAY_BUFFER, temp.size() * sizeof(float), &temp[0], GL_DYNAMIC_DRAW);
+				glBufferData(GL_ARRAY_BUFFER, player_fire.size() * sizeof(float), &player_fire[0], GL_DYNAMIC_DRAW);
 
 				glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GL_FLOAT), (void*)0);
 				glEnableVertexAttribArray(0);
@@ -526,11 +513,11 @@ int main()
 				glDrawArrays(GL_POINTS, 0, size);
 			}
 
-			// Find enemy fired missiles			
+			// Initialize enemy fired missiles			
 			if (currFrame - last_return_fire_time > return_fire_delta_time)
 			{
 				last_return_fire_time = currFrame;
-				int rnd = exist_enemy.size();
+				size_t rnd = exist_enemy.size();
 				if (rnd > 0)
 				{
 					int val = rand() % rnd;
@@ -542,46 +529,51 @@ int main()
 						++iter;
 
 					// fire missile from val
-					enemy_fire.push_back(villan[33 * 3 + *iter * 3]);
-					enemy_fire.push_back(villan[33 * 3 + *iter * 3 + 1]);
+					vect_index = (n_rows - 1) * n_per_row * 3 + *iter * 3;
+					vect_index2 = vect_index + 1;
+					enemy_fire.push_back(villan[vect_index]);
+					enemy_fire.push_back(villan[vect_index2]);
 				}
 			}
 
-			// mmove enemy missiles
-			if (enemy_fire.size())
+			// Enemy missile interaction
+			if (num_enemy_missile)
 			{
 				//move enemy missiles
 				std::vector<float>::iterator it, it2;
 				for (it = enemy_fire.begin(); it < enemy_fire.end(); ++it)
-					*(++it) -= disp/1.3;
+					*(++it) -= disp;
 
 				// check collision with player ship
 				for (it = enemy_fire.begin(); it < enemy_fire.end(); ++it)
 				{
-					if (*(it + 1) > -0.75)
+					if (*(it + 1) > bot_end_limit + rect_width * scale_factor_ss / 2 + threshold) //-0.75
 						break;
 					else
 					{
-						if (*it<ss[0] + 0.06 && *it>ss[0] - 0.06)
+						if (*it<ss[0] + (rect_length * scale_factor_ss / 2) + threshold && *it>ss[0] - (rect_length * scale_factor_ss / 2) - threshold)
 						{
 							std::cout << "Collision. Lost\n";
-							num_kill = 44;
+							num_kill = total_num;
 						}
 					}
 					++it;
 				}
 
-				//remove missile below spaceship
+				//remove missile below player ship
 				it = enemy_fire.begin();
 				it2 = it; it2 += 2;
-				if (*(it + 1) < -0.8)
+				if (*(it + 1) < bot_end_limit)
+				{
 					enemy_fire.erase(it, it2);
+					--num_enemy_missile;
+				}
 			}
 
-			// draw said missiles
-			if (enemy_fire.size()/2 >= 1)
+			// draw enemy missiles
+			if (num_enemy_missile)
 			{
-				sh.use();
+				sh_missiles.use();
 				glBindVertexArray(vao_m);
 				glBindBuffer(GL_ARRAY_BUFFER, vbo_m);
 				glBufferData(GL_ARRAY_BUFFER, enemy_fire.size() * sizeof(float), &enemy_fire[0], GL_DYNAMIC_DRAW);
@@ -589,25 +581,26 @@ int main()
 				glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GL_FLOAT), (void*)0);
 				glEnableVertexAttribArray(0);
 
-				glDrawArrays(GL_POINTS, 0, enemy_fire.size()/2);
+				glDrawArrays(GL_POINTS, 0, num_enemy_missile);
 			}
 
-			shen.use();			
+			// draw enemy ships
+			sh_ships.use();			
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, tex);
-			glBindVertexArray(vao_en);
-			for (int i = 0; i < 44; ++i)
+			for (int i = 0; i < total_num; ++i)
 				if (draw[i])
 				{
-					test = glm::vec3(villan[i * 3], villan[i * 3 + 1], villan[i * 3 + 2]);
+					vect_index = i * 3, vect_index2 = vect_index + 1, vect_index3 = vect_index + 2;
+					offset_vect = glm::vec3(villan[vect_index], villan[vect_index2], villan[vect_index3]);
 					glm::mat4 model(1.0f);
-					model = glm::translate(model, test);
-					model = glm::scale(model, glm::vec3(0.2f, 0.2f, 1.0f));
-					shen.setMat4("model", model);
-					//shen.setFloat("col", villan[i * 4 + 3]);
-					shen.setInt("texture1", 0);
-					glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+					model = glm::translate(model, offset_vect);
+					model = glm::scale(model, glm::vec3(scale_factor_en, scale_factor_en, 1.0f));
+					sh_ships.setMat4("model", model);
+					sh_ships.setInt("texture1", 0);
+					space_ships.draw();
 				}
+			glBindVertexArray(0);
 		}
 		else
 		{
@@ -619,7 +612,6 @@ int main()
 					s.change_ssx(-disp);
 					ss[0] = s.output_ssx();
 				}
-				//std::cout << ss[0] << " " << ss[1] << std::endl;
 			}
 			else if (press == 6 || press == 7)
 			{
@@ -628,21 +620,61 @@ int main()
 					s.change_ssx(disp);
 					ss[0] = s.output_ssx();
 				}
-				//std::cout << ss[0] << " " << ss[1] << std::endl;
 			}
 			
-			shen.use();
-			glBindVertexArray(vao);
+			// Draw only player ship
+			sh_ships.use();
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, tex2);
-			test = glm::vec3(ss[0], ss[1], 0);
+			offset_vect = glm::vec3(ss[0], ss[1], 0);
 			glm::mat4 model(1.0f);
-			model = glm::translate(model, test);
-			model = glm::scale(model, glm::vec3(0.25f, 0.25f, 1.0f));
-			shen.setMat4("model", model);
-			//shen.setFloat("col", villan[i * 4 + 3]);
-			shen.setInt("texture1", 1);
-			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+			model = glm::translate(model, offset_vect);
+			model = glm::scale(model, glm::vec3(scale_factor_ss, scale_factor_ss, 1.0f));
+			sh_ships.setMat4("model", model);
+			sh_ships.setInt("texture1", 1);
+			space_ships.draw();
+
+			if (press == 1)
+			{
+				// Reset values in preparation of new level
+				n_rows = 0, n_per_row = 0, total_num = 0;
+				num_kill = 0;
+				std::vector<float>().swap(villan);
+				std::vector<float>().swap(player_fire);
+				std::vector<float>().swap(enemy_fire);
+				std::list<int>().swap(exist_enemy);
+				std::vector<bool>().swap(draw);
+				s.init();
+
+				// Read new level data
+				char level_file[] = "D:\\C++\\OpenGL\\Tutorial\\Visual Studio\\space_invaders\\level_2.txt";
+				lvl_reader.open(level_file, std::ios::in);
+				if (lvl_reader.is_open())
+				{
+					lvl_reader >> n_rows >> n_per_row;
+					total_num = n_rows * n_per_row;
+					while (true)
+					{
+						lvl_reader >> coord_extract;
+						villan.push_back(coord_extract);
+						if (lvl_reader.eof())
+							break;
+					}
+					lvl_reader.close();
+				}
+
+				// Initialize values for new level
+				for (int i = 0; i < n_per_row; ++i)
+					exist_enemy.push_back(i);
+				num_enemy_missile = 0;
+				last_return_fire_time = currFrame + 2.0f;
+				draw = std::vector<bool>(total_num, 1);
+				ss[0] = s.output_ssx();
+				ss[1] = s.output_ssy();
+				
+				vect_index = 3 * total_num - 3;
+				en_row_length_norm = abs(villan[0] - villan[vect_index]);
+			}
 		}
 
 		glfwSwapBuffers(window);
@@ -650,7 +682,7 @@ int main()
 	}
 
 
-	//glfwTerminate();
+	glfwTerminate();
 	return 0;
 
 }
